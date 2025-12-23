@@ -1,11 +1,18 @@
-FROM node:18-alpine AS test
+FROM node:18-alpine AS runtime
 
 WORKDIR /app
 
+ENV NODE_ENV=production
+ENV PORT=4000
+
 COPY package*.json ./
 
-RUN npm run build
+RUN apk add --no-cache --virtual .gyp python3 make g++ \
+    && (npm ci --only=production --silent || npm install --only=production --silent) \
+    && apk del .gyp
 
 COPY . .
 
-CMD ["sh", "-c", "npm test -- --watchAll=false"]
+EXPOSE 4000
+
+CMD ["npm", "start"]
