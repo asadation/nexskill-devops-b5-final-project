@@ -19,7 +19,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Debug: list workspace
+      - name: Debug
         run: |
           echo "pwd: $(pwd)"
           echo "ls -la:"
