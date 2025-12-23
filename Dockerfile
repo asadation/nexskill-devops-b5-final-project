@@ -1,6 +1,6 @@
 FROM node:18 AS build
 WORKDIR /app
-COPY . .
+COPY pakage*.json ./
 
 RUN npm install
 RUN echo "REACT_APP_LINK_SERVICE_URL=http://localhost:3000" > .env
