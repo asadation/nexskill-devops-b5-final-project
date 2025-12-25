@@ -1,11 +1,4 @@
 # CI workflow: builds docker-compose services and runs unit tests inside the service containers.
-# - builds with no-cache to avoid using stale images (remove --no-cache if you want caching)
-# - starts postgres and waits for it to become ready
-# - runs unit tests with `npm run test --if-present` so missing test scripts won't hard-fail other services
-# - tears down compose on completion
-#
-# Adjust services/test commands as needed for your repo.
-
 name: CI
 
 on:
@@ -18,44 +11,49 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: ci
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx (optional but recommended)
-        uses: docker/setup-buildx-action@v2
+      - name: Ensure docker-compose is available (install if missing)
+        run: |
+          if command -v docker-compose >/dev/null 2>&1; then
+            echo "docker-compose already installed: $(docker-compose --version)"
+          else
+            echo "Installing docker-compose..."
+            DOCKER_COMPOSE_VERSION="v2.20.2"
+            sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
+            docker-compose --version
+          fi
 
       - name: Build docker-compose images (no cache)
-        run: docker compose -f ./docker-compose.yml build --no-cache --parallel
+        run: docker-compose -f ./docker-compose.yml build --no-cache --parallel
 
       - name: Start required infrastructure (postgres)
-        run: docker compose -f ./docker-compose.yml up -d postgres
+        run: docker-compose -f ./docker-compose.yml up -d postgres
 
       - name: Wait for Postgres to be ready
         run: |
           set -e
           RETRIES=60
           for i in $(seq 1 $RETRIES); do
-            docker compose -f ./docker-compose.yml exec -T postgres pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-urlshortener}" && { echo "Postgres ready"; exit 0; }
+            docker-compose -f ./docker-compose.yml exec -T postgres pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-urlshortener}" && { echo "Postgres ready"; exit 0; }
             echo "Waiting for Postgres ($i/$RETRIES)..."
             sleep 1
           done
           echo "Postgres did not become ready in time" >&2
           exit 1
 
-      - name: Run analytics-service unit tests
-        # Install deps (legacy peer deps option included to match your local usage) and run tests.
+      - name: Run analytics-service unit tests (Node)
         run: |
-          docker compose -f ./docker-compose.yml run --rm analytics-service sh -lc 'npm install --legacy-peer-deps --silent && npm run test --if-present -- --watchAll=false'
+          docker-compose -f ./docker-compose.yml run --rm analytics-service sh -lc 'npm install --legacy-peer-deps --silent && npm run test --if-present -- --watchAll=false'
 
-      - name: Run link-service unit tests (if present)
-        if: always()
+      - name: Run link-service unit tests (Python)
         run: |
-          # If your link-service has tests, this will run them; if not, `--if-present` avoids failing.
-          docker compose -f ./docker-compose.yml run --rm link-service sh -lc 'npm install --legacy-peer-deps --silent && npm run test --if-present -- --watchAll=false'
+          docker-compose -f ./docker-compose.yml run --rm link-service sh -lc 'pip install --no-cache-dir -r requirements.txt && python -m pytest --maxfail=1 -q'
 
       - name: Bring down docker-compose (always)
         if: always()
-        run: docker compose -f ./docker-compose.yml down --volumes --remove-orphans
+        run: docker-compose -f ./docker-compose.yml down --volumes --remove-orphans
