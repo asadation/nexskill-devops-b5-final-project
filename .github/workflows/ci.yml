@@ -1,47 +1,61 @@
-name: Docker CI
+# CI workflow: builds docker-compose services and runs unit tests inside the service containers.
+# - builds with no-cache to avoid using stale images (remove --no-cache if you want caching)
+# - starts postgres and waits for it to become ready
+# - runs unit tests with `npm run test --if-present` so missing test scripts won't hard-fail other services
+# - tears down compose on completion
+#
+# Adjust services/test commands as needed for your repo.
+
+name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ci
 
     steps:
-      # Checkout repository
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      # Set up Docker Buildx
-      - name: Set up Docker Buildx
+      - name: Set up Docker Buildx (optional but recommended)
         uses: docker/setup-buildx-action@v2
 
-      # Log in to Docker Hub
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Build docker-compose images (no cache)
+        run: docker compose -f ./docker-compose.yml build --no-cache --parallel
 
-      # Build and push containers
-      - name: Build & Push Docker images
+      - name: Start required infrastructure (postgres)
+        run: docker compose -f ./docker-compose.yml up -d postgres
+
+      - name: Wait for Postgres to be ready
         run: |
-          # Frontend
-          docker build -f frontend/Dockerfile -t ${{ secrets.DOCKER_USERNAME }}/url-shorten-final-project:frontend-ci-${{ github.run_number }} \
-                                                -t ${{ secrets.DOCKER_USERNAME }}/url-shorten-final-project:frontend-latest ./frontend
-          docker push ${{ secrets.DOCKER_USERNAME }}/url-shorten-final-project:frontend-ci-${{ github.run_number }}
-          docker push ${{ secrets.DOCKER_USERNAME }}/url-shorten-final-project:frontend-latest
+          set -e
+          RETRIES=60
+          for i in $(seq 1 $RETRIES); do
+            docker compose -f ./docker-compose.yml exec -T postgres pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-urlshortener}" && { echo "Postgres ready"; exit 0; }
+            echo "Waiting for Postgres ($i/$RETRIES)..."
+            sleep 1
+          done
+          echo "Postgres did not become ready in time" >&2
+          exit 1
 
-          # Link Service
-          docker build -f link-service/Dockerfile -t ${{ secrets.DOCKER_USERNAME }}/url-shorten-final-project:link-service-ci-${{ github.run_number }} \
-                                                    -t ${{ secrets.DOCKER_USERNAME }}/url-shorten-final-project:link-service-latest ./link-service
-          docker push ${{ secrets.DOCKER_USERNAME }}/url-shorten-final-project:link-service-ci-${{ github.run_number }}
-          docker push ${{ secrets.DOCKER_USERNAME }}/url-shorten-final-project:link-service-latest
+      - name: Run analytics-service unit tests
+        # Install deps (legacy peer deps option included to match your local usage) and run tests.
+        run: |
+          docker compose -f ./docker-compose.yml run --rm analytics-service sh -lc 'npm install --legacy-peer-deps --silent && npm run test --if-present -- --watchAll=false'
 
-          # Analytics Service
-          docker build -f analytics-service/Dockerfile -t ${{ secrets.DOCKER_USERNAME }}/url-shorten-final-project:analytics-service-ci-${{ github.run_number }} \
-                                                          -t ${{ secrets.DOCKER_USERNAME }}/url-shorten-final-project:analytics-service-latest ./analytics-service
-          docker push ${{ secrets.DOCKER_USERNAME }}/url-shorten-final-project:analytics-service-ci-${{ github.run_number }}
-          docker push ${{ secrets.DOCKER_USERNAME }}/url-shorten-final-project:analytics-service-latest
+      - name: Run link-service unit tests (if present)
+        if: always()
+        run: |
+          # If your link-service has tests, this will run them; if not, `--if-present` avoids failing.
+          docker compose -f ./docker-compose.yml run --rm link-service sh -lc 'npm install --legacy-peer-deps --silent && npm run test --if-present -- --watchAll=false'
+
+      - name: Bring down docker-compose (always)
+        if: always()
+        run: docker compose -f ./docker-compose.yml down --volumes --remove-orphans
