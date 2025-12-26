@@ -8,9 +8,12 @@ WORKDIR /app
 COPY package*.json ./
 
 # Resolve conflict by combining or using chosen lines:
-RUN apk add --no-cache --virtual .gyp python3 make g++ \
+RUN apt-get update \
+    && apt-get install -y python3 make g++ \
     && npm install --only=production --silent \
-    && apk del .gyp
+    && apt-get remove -y python3 make g++ \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 # Uncomment this line if you want to use the simpler npm install command
 # RUN npm install --production
