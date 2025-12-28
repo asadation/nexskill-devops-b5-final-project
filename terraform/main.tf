@@ -365,48 +365,13 @@ resource "aws_ecs_task_definition" "node" {
 
   container_definitions = jsonencode([
     {
-      name      = "frontend"
-      image     = "docker.io/abdulwahab4d/url-shorten-final-project:frontend-latest"
-      essential = true
-
-      portMappings = [{
-        containerPort = 80
-        protocol      = "tcp"
-      }]
-
-      environment = [
-        {
-          name  = "LINK_SERVICE_URL"
-          value = "http://localhost:3000"
-        }
-      ]
-
-      dependsOn = [
-        {
-          containerName = "link-service"
-          condition     = "START"
-        }
-      ]
-
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = "/ecs/node-ec2-cluster"
-          awslogs-region        = "eu-north-1"
-          awslogs-stream-prefix = "frontend"
-        }
-      }
-    },
-    {
       name      = "link-service"
       image     = "docker.io/abdulwahab4d/url-shorten-final-project:link-service-latest"
       essential = true
-
       portMappings = [{
         containerPort = 3000
         protocol      = "tcp"
       }]
-
       logConfiguration = {
         logDriver = "awslogs"
         options = {
@@ -415,9 +380,39 @@ resource "aws_ecs_task_definition" "node" {
           awslogs-stream-prefix = "link-service"
         }
       }
+    },
+    {
+      name      = "frontend"
+      image     = "docker.io/abdulwahab4d/url-shorten-final-project:frontend-latest"
+      essential = true
+      portMappings = [{
+        containerPort = 80
+        protocol      = "tcp"
+      }]
+      environment = [
+        {
+          name  = "LINK_SERVICE_URL"
+          value = "http://localhost:3000"
+        }
+      ]
+      dependsOn = [
+        {
+          containerName = "link-service"
+          condition     = "START"
+        }
+      ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = "/ecs/node-ec2-cluster"
+          awslogs-region        = "eu-north-1"
+          awslogs-stream-prefix = "frontend"
+        }
+      }
     }
   ])
 }
+
 
 
 

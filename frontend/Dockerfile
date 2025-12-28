@@ -1,26 +1,30 @@
-# Stage 1: Build your frontend (optional, e.g., React/Next.js)
-FROM node:20-alpine AS build
+# ---------- Build stage ----------
+FROM node:18 AS build
 
 WORKDIR /app
+
+# Install dependencies
 COPY package*.json ./
 RUN npm install
+
+# Copy source
 COPY . .
+
+# Build React app
 RUN npm run build
 
-# Stage 2: Serve with Nginx
+
+# ---------- Production stage ----------
 FROM nginx:alpine
 
-# Remove default Nginx content
+# Remove default nginx config
 RUN rm -rf /usr/share/nginx/html/*
 
-# Copy built frontend
+# Copy build output
 COPY --from=build /app/build /usr/share/nginx/html
-
-# Copy custom nginx config if you have one
-# COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port 80
 EXPOSE 80
 
-# Keep Nginx running in the foreground
+# Start nginx
 CMD ["nginx", "-g", "daemon off;"]
