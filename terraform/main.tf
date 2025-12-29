@@ -5,6 +5,7 @@ resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
   enable_dns_hostnames = true
+
   tags = { Name = "main-vpc" }
 }
 
@@ -53,11 +54,22 @@ resource "aws_subnet" "private_2" {
 }
 
 # ----------------------------
+# NAT Gateway
+# ----------------------------
+resource "aws_eip" "nat" {
+  domain = "vpc"
+}
+
+resource "aws_nat_gateway" "nat" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public_1.id
+  tags          = { Name = "nat-gateway" }
+}
+
+# ----------------------------
 # Route Tables
 # ----------------------------
-# ----------------------------
-# Public Route Table
-# ----------------------------
+# Public RT
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -79,9 +91,7 @@ resource "aws_route_table_association" "public_2_assoc" {
   route_table_id = aws_route_table.public.id
 }
 
-# ----------------------------
-# Private Route Table
-# ----------------------------
+# Private RT
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
 
@@ -103,62 +113,62 @@ resource "aws_route_table_association" "private_2_assoc" {
   route_table_id = aws_route_table.private.id
 }
 
-
-# ----------------------------
-# NAT Gateway (for private subnets)
-# ----------------------------
-resource "aws_eip" "nat" {
-  domain = "vpc"
-}
-
-resource "aws_nat_gateway" "nat" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public_1.id
-  tags          = { Name = "nat-gateway" }
-}
-
-
 # ----------------------------
 # Security Groups
 # ----------------------------
 # ALB SG
 resource "aws_security_group" "alb_sg" {
-  name   = "alb-sg"
-  vpc_id = aws_vpc.main.id
+  name        = "alb-sg"
+  description = "ALB security group"
+  vpc_id      = aws_vpc.main.id
 
   ingress {
+    description = "HTTP from Internet"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = { Name = "alb-sg" }
 }
 
 # ECS Tasks SG
 resource "aws_security_group" "ecs_sg" {
-  name   = "ecs-sg"
-  vpc_id = aws_vpc.main.id
+  name        = "ecs-task-sg"
+  description = "ECS task security group"
+  vpc_id      = aws_vpc.main.id
 
   ingress {
+    description     = "HTTP from ALB"
     from_port       = 80
     to_port         = 80
     protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
   }
-
-  # Self-ingress for tasks using awsvpc
   ingress {
-    from_port = 0
-    to_port   = 65535
-    protocol  = "tcp"
-    self      = true
+    description = "SSH from my IP"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Container-to-container
+  ingress {
+    description = "Internal ECS"
+    from_port   = 0
+    to_port     = 65535
+    protocol    = "tcp"
+    self        = true
   }
 
   egress {
@@ -167,8 +177,29 @@ resource "aws_security_group" "ecs_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = { Name = "ecs-task-sg" }
 }
 
+# RDS SG
+resource "aws_security_group" "rds_sg" {
+  name        = "rds-postgres-sg"
+  description = "RDS PostgreSQL security group"
+  vpc_id      = aws_vpc.main.id
+
+  tags = { Name = "rds-postgres-sg" }
+}
+
+# ECS -> RDS
+resource "aws_security_group_rule" "ecs_to_rds_postgres" {
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+
+  security_group_id        = aws_security_group.rds_sg.id
+  source_security_group_id = aws_security_group.ecs_sg.id
+}
 
 # ----------------------------
 # ALB
@@ -181,13 +212,13 @@ resource "aws_lb" "alb" {
   enable_deletion_protection = false
 }
 
-# Target Group (for bridge network mode, use instance target type)
+# Target Group
 resource "aws_lb_target_group" "tg" {
   name        = "node-tg-ec2"
   port        = 80
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
-  target_type = "ip"  # EC2 tasks use instance targets
+  target_type = "ip"
 
   health_check {
     path                = "/"
@@ -219,7 +250,7 @@ resource "aws_ecs_cluster" "main" {
 }
 
 # ----------------------------
-# EC2 IAM Role
+# IAM Roles
 # ----------------------------
 resource "aws_iam_role" "ecs_instance_role" {
   name = "ecsInstanceRole"
@@ -239,18 +270,11 @@ resource "aws_iam_role_policy_attachment" "ecs_instance_attach" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
 }
 
-resource "aws_iam_role_policy_attachment" "ecs_instance_attach_extra" {
-  role       = aws_iam_role.ecs_instance_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceRole"
-}
-
 resource "aws_iam_instance_profile" "ecs_profile" {
   role = aws_iam_role.ecs_instance_role.name
 }
 
-
-#EC2 remote access
-
+# ECS Task Role (for secrets)
 resource "aws_iam_role" "ecs_task_role" {
   name = "ecsTaskRole"
 
@@ -263,18 +287,21 @@ resource "aws_iam_role" "ecs_task_role" {
     }]
   })
 }
-resource "aws_iam_role_policy_attachment" "ecs_exec" {
-  role       = aws_iam_role.ecs_task_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+
+resource "aws_iam_role_policy" "ecs_task_secrets_policy" {
+  name   = "ecs-task-secrets-policy"
+  role   = aws_iam_role.ecs_task_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = ["arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret*"]
+    }]
+  })
 }
 
-resource "aws_iam_role_policy_attachment" "ecs_exec_ssm" {
-  role       = aws_iam_role.ecs_task_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-}
-
-# CloudWatch
-
+# ECS Execution Role (for logs + pulling secrets)
 resource "aws_iam_role" "ecs_execution_role" {
   name = "ecsExecutionRole"
 
@@ -287,21 +314,34 @@ resource "aws_iam_role" "ecs_execution_role" {
     }]
   })
 }
+
 resource "aws_iam_role_policy_attachment" "ecs_execution_attach" {
   role       = aws_iam_role.ecs_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
+
 resource "aws_iam_role_policy_attachment" "ecs_logs" {
   role       = aws_iam_role.ecs_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
 }
+
+resource "aws_iam_role_policy" "ecs_execution_secrets_policy" {
+  name   = "ecs-execution-secrets-policy"
+  role   = aws_iam_role.ecs_execution_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = ["arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret*"]
+    }]
+  })
+}
+
 resource "aws_cloudwatch_log_group" "ecs_node" {
   name              = "/ecs/node-ec2-cluster"
   retention_in_days = 7
 }
-
-
-
 
 # ----------------------------
 # ECS EC2 Instances (Launch Template + ASG)
@@ -319,6 +359,7 @@ data "aws_ami" "ecs" {
 resource "aws_launch_template" "ecs" {
   image_id      = data.aws_ami.ecs.id
   instance_type = "t3.small"
+  key_name      = "Lab-Key"
 
   iam_instance_profile {
     name = aws_iam_instance_profile.ecs_profile.name
@@ -333,22 +374,27 @@ EOT
   )
 
   network_interfaces {
-    security_groups = [aws_security_group.ecs_sg.id]
+    associate_public_ip_address = true
+    security_groups             = [aws_security_group.ecs_sg.id]
   }
+
 }
 
 resource "aws_autoscaling_group" "ecs" {
-  desired_capacity   = 1
-  min_size           = 1
-  max_size           = 1
-  vpc_zone_identifier = [aws_subnet.private_1.id, aws_subnet.private_2.id]
+  desired_capacity    = 1
+  min_size            = 1
+  max_size            = 1
+  vpc_zone_identifier = [
+    aws_subnet.public_1.id,
+    aws_subnet.public_2.id
+  ]
+
 
   launch_template {
     id      = aws_launch_template.ecs.id
     version = "$Latest"
   }
 }
-
 
 # ----------------------------
 # ECS Task Definition
@@ -363,7 +409,7 @@ resource "aws_ecs_task_definition" "node" {
   task_role_arn      = aws_iam_role.ecs_task_role.arn
   execution_role_arn = aws_iam_role.ecs_execution_role.arn
 
-  container_definitions = jsonencode([
+    container_definitions = jsonencode([
     {
       name      = "link-service"
       image     = "docker.io/abdulwahab4d/url-shorten-final-project:link-service-latest"
@@ -380,6 +426,24 @@ resource "aws_ecs_task_definition" "node" {
           awslogs-stream-prefix = "link-service"
         }
       }
+      secrets = [
+        {
+          name      = "DB_HOST"
+          valueFrom = "arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret-pGfNMn:DB_HOST::"
+        },
+        {
+          name      = "DB_NAME"
+          valueFrom = "arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret-pGfNMn:DB_NAME::"
+        },
+        {
+          name      = "DB_USER"
+          valueFrom = "arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret-pGfNMn:DB_USER::"
+        },
+        {
+          name      = "DB_PASSWORD"
+          valueFrom = "arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret-pGfNMn:DB_PASSWORD::"
+        }
+      ]
     },
     {
       name      = "frontend"
@@ -409,15 +473,30 @@ resource "aws_ecs_task_definition" "node" {
           awslogs-stream-prefix = "frontend"
         }
       }
+      secrets = [
+        {
+          name      = "DB_HOST"
+          valueFrom = "arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret-pGfNMn:DB_HOST::"
+        },
+        {
+          name      = "DB_NAME"
+          valueFrom = "arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret-pGfNMn:DB_NAME::"
+        },
+        {
+          name      = "DB_USER"
+          valueFrom = "arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret-pGfNMn:DB_USER::"
+        },
+        {
+          name      = "DB_PASSWORD"
+          valueFrom = "arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret-pGfNMn:DB_PASSWORD::"
+        }
+      ]
     }
   ])
 }
 
-
-
-
 # ----------------------------
-# ECS Service (awsvpc)
+# ECS Service
 # ----------------------------
 resource "aws_ecs_service" "node" {
   name            = "node-service-ec2-awsvpc"

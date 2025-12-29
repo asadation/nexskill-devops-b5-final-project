@@ -5,9 +5,38 @@ import hashlib
 import requests
 from config import Config
 
+
+import os
+import time
+import psycopg2
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import string
+import random
+from dotenv import load_dotenv
+
+load_dotenv()  # This loads variables from .env into os.environ
+
+
+
 app = Flask(__name__)
 CORS(app)
 
+# ---------------------------
+# Configuration
+# ---------------------------
+DB_RETRY_COUNT = int(os.getenv("DB_RETRY_COUNT", 10))
+DB_RETRY_DELAY = int(os.getenv("DB_RETRY_DELAY", 5))
+
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("5432")
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+
+# ---------------------------
+# Database Functions
+# ---------------------------
 def get_db_connection():
     conn = psycopg2.connect(
         host=Config.DATABASE_HOST,
@@ -121,4 +150,4 @@ def get_all_links():
 
 if __name__ == '__main__':
     init_db()
-    app.run(host='0.0.0.0', port=Config.PORT, debug=True)
+    app.run(host='0.0.0.0', port=Config.PORT)
