@@ -227,7 +227,7 @@ resource "aws_lb" "alb" {
   enable_deletion_protection = false
 }
 
-# Target Group frontend
+# Target Group
 resource "aws_lb_target_group" "tg" {
   name        = "node-tg-ec2"
   port        = 80
@@ -245,7 +245,7 @@ resource "aws_lb_target_group" "tg" {
   }
 }
 
-# Listener frontend
+# Listener
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.alb.arn
   port              = 80
@@ -256,41 +256,6 @@ resource "aws_lb_listener" "http" {
     target_group_arn = aws_lb_target_group.tg.arn
   }
 }
-
-# Target Group link-service
-resource "aws_lb_target_group" "backend_tg" {
-  name     = "backend-tg"
-  port     = 3000                   # backend container port
-  protocol = "HTTP"
-  vpc_id      = aws_vpc.main.id
-  target_type = "ip"                # for awsvpc ECS tasks
-
-  health_check {
-    path                = "/health"  # or "/" if no health endpoint
-    interval            = 30
-    timeout             = 5
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
-  }
-}
-
-# Listener link-service
-resource "aws_lb_listener_rule" "backend_rule" {
-  listener_arn = aws_lb_listener.http.arn  # ALB listener ARN (port 80)
-  priority     = 10
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.backend_tg.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/shorten*"]  # All requests starting with /shorten go to backend
-    }
-  }
-}
-
 
 # ----------------------------
 # ECS Cluster
@@ -393,43 +358,6 @@ resource "aws_cloudwatch_log_group" "ecs_node" {
   retention_in_days = 7
 }
 
-# S3 connectivity
-resource "aws_iam_policy" "frontend_s3_read" {
-  name = "FrontendS3ReadPolicy"
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = ["s3:GetObject"]
-      Resource = ["arn:aws:s3:::terraform-bucket-aw123/frontend/*"]
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "frontend_s3_read_attach" {
-  role       = aws_iam_role.ecs_task_role.name
-  policy_arn = aws_iam_policy.frontend_s3_read.arn
-}
-
-
-data "template_file" "frontend_config" {
-  template = <<EOT
-window._env_ = {
-  LINK_SERVICE_URL: "http://${aws_lb.alb.dns_name}/shorten"
-};
-EOT
-}
-
-resource "aws_s3_object" "frontend_config" {
-  bucket       = "terraform-bucket-aw123"      # your existing bucket
-  key          = "frontend/app.js"          # path in bucket
-  content      = data.template_file.frontend_config.rendered
-  content_type = "application/javascript"
-
-  depends_on = [aws_lb.alb]  # ensure ALB exists first
-}
-
-
 # ----------------------------
 # ECS EC2 Instances (Launch Template + ASG)
 # ----------------------------
@@ -510,12 +438,6 @@ resource "aws_ecs_task_definition" "node" {
         containerPort = 3000
         protocol      = "tcp"
       }]
-      # Command replaces config.template.js → config.js at container start
-      command = [
-        "/bin/sh",
-        "-c",
-        "aws s3 cp s3://terraform-bucket-aw123/frontend/app.js /usr/share/nginx/html/app.js && nginx -g 'daemon off;'"
-      ]
       logConfiguration = {
         logDriver = "awslogs"
         options = {
@@ -554,7 +476,7 @@ resource "aws_ecs_task_definition" "node" {
       environment = [
         {
           name  = "LINK_SERVICE_URL"
-          value = "http://${aws_lb.alb.dns_name}/shorten"
+          value = "http://link-service:3000"
         }
       ]
       dependsOn = [
@@ -615,15 +537,6 @@ resource "aws_ecs_service" "node" {
     container_name   = "frontend"
     container_port   = 80
   }
-  load_balancer {
-    target_group_arn = aws_lb_target_group.backend_tg.arn
-    container_name   = "link-service"
-    container_port   = 3000
-  }
-  depends_on = [
-    aws_lb.alb,
-    aws_lb_target_group.backend_tg,
-    aws_lb_listener.http
-  ]
 
+  depends_on = [aws_lb_listener.http]
 }

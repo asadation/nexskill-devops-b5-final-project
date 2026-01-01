@@ -1,19 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
-
-// Use runtime injected LINK_SERVICE_URL
-const LINK_SERVICE_URL = window._env_?.LINK_SERVICE_URL || 'http://localhost:3000';
-
-// Example fetch
-fetch(`${LINK_SERVICE_URL}/shorten`, {
-  method: "POST",
-  body: JSON.stringify({ url: "https://example.com" }),
-  headers: { "Content-Type": "application/json" }
-})
-  .then(res => res.json())
-  .then(data => console.log(data));
-const ANALYTICS_SERVICE_URL = window._env_.ANALYTICS_SERVICE_URL || 'http://localhost:4000';
+const LINK_SERVICE_URL = process.env.REACT_APP_LINK_SERVICE_URL || 'http://localhost:3000';
+const ANALYTICS_SERVICE_URL = process.env.REACT_APP_ANALYTICS_SERVICE_URL || 'http://localhost:4000';
 
 function App() {
   const [url, setUrl] = useState('');
