@@ -1,66 +1,76 @@
-# CI workflow: builds docker-compose services and runs unit tests inside the service containers.
-name: CI
+name: CI - Build and Push Docker Images
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - "**" # This will run on any branch, including develop and main
 
 jobs:
-  build-and-test:
+  build-frontend:
+    name: Build and Push Frontend
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v3
 
-      - name: Ensure docker-compose is available (install if missing)
-        run: |
-          if command -v docker-compose >/dev/null 2>&1; then
-            echo "docker-compose already installed: $(docker-compose --version)"
-          else
-            echo "Installing docker-compose..."
-            DOCKER_COMPOSE_VERSION="v2.20.2"
-            sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-            sudo chmod +x /usr/local/bin/docker-compose
-            docker-compose --version
-          fi
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build docker-compose images (no cache)
-        run: docker-compose -f ./docker-compose.yml build --no-cache --parallel
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v4
+        with:
+          # This tells the builder to look inside the 'frontend' folder
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          # This creates the image ali15401/nexskill-frontend
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/nexskill-frontend:latest
 
-      - name: Start required infrastructure (postgres)
-        run: docker-compose -f ./docker-compose.yml up -d postgres
+  build-backend:
+    name: Build and Push Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
 
-      - name: Wait for Postgres to be ready
-        run: |
-          set -e
-          RETRIES=60
-          for i in $(seq 1 $RETRIES); do
-            docker-compose -f ./docker-compose.yml exec -T postgres pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-urlshortener}" && { echo "Postgres ready"; exit 0; }
-            echo "Waiting for Postgres ($i/$RETRIES)..."
-            sleep 1
-          done
-          echo "Postgres did not become ready in time" >&2
-          exit 1
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Ensure tests directory and add placeholder if missing
-        run: |
-          mkdir -p tests
-          if [ ! -f tests/test_placeholder.py ]; then
-            echo -e "def test_placeholder():\n    assert True" > tests/test_placeholder.py
-          fi
+      - name: Build and push backend image
+        uses: docker/build-push-action@v4
+        with:
+          # This tells the builder to look inside the 'backend' folder
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          # This creates the image ali15401/nexskill-backend
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/nexskill-backend:latest
 
-      - name: Run analytics-service unit tests (Node)
-        run: |
-          docker-compose -f ./docker-compose.yml run --rm analytics-service sh -lc "npm install && npm test"
+  build-nginx:
+    name: Build and Push Nginx
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
 
-      - name: Run link-service unit tests (Python)
-        run: |
-          docker-compose -f ./docker-compose.yml run --rm link-service sh -lc "pip install --no-cache-dir -r requirements.txt && pip install pytest && python -m pytest --maxfail=1 -q"
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Bring down docker-compose (always)
-        if: always()
-        run: docker-compose -f ./docker-compose.yml down --volumes --remove-orphans
+      - name: Build and push nginx image
+        uses: docker/build-push-action@v4
+        with:
+          # This tells the builder to look inside the 'nginx' folder
+          context: ./nginx
+          file: ./nginx/Dockerfile
+          push: true
+          # This creates the image ali15401/nexskill-nginx
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/nexskill-nginx:latest
