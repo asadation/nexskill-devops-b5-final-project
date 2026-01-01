@@ -37,4 +37,4 @@ COPY --from=build /app/build /usr/share/nginx/html
 EXPOSE 80
 
 # Runtime command: copy config from S3 then start nginx
-CMD ["/bin/sh","-c","aws s3 cp s3://terraform-bucket-aw123/frontend/app.js /usr/share/nginx/htmlapp.js && nginx -g 'daemon off;'"]
+CMD ["/bin/sh","-c","aws s3 cp s3://terraform-bucket-aw123/frontend/app.js /usr/share/nginx/html/app.js && nginx -g 'daemon off;'"]
