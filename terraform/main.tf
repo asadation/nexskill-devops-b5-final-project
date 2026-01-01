@@ -432,6 +432,7 @@ resource "aws_ecs_task_definition" "node" {
     container_definitions = jsonencode([
     {
       name      = "link-service"
+      hostname = "link-service"
       image     = "docker.io/abdulwahab4d/url-shorten-final-project:link-service-latest"
       essential = true
       portMappings = [{
@@ -467,6 +468,7 @@ resource "aws_ecs_task_definition" "node" {
     },
     {
       name      = "frontend"
+      hostname = "frontend"
       image     = "docker.io/abdulwahab4d/url-shorten-final-project:frontend-latest"
       essential = true
       portMappings = [{
