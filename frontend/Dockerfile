@@ -1,30 +1,21 @@
-FROM node:18-alpine AS build
+# Use an official Node.js runtime as a base image
+FROM node:16-alpine
 
+# Set the working directory in the container to /app
 WORKDIR /app
 
-ENV PATH /app/node_modules/.bin:$PATH
-
+# Copy the package.json and package-lock.json files
+# This is a best practice to leverage Docker's layer caching
 COPY package*.json ./
 
+# Install the application's dependencies
 RUN npm install
 
+# Copy the rest of the application's source code into the image
 COPY . .
 
-ARG REACT_APP_LINK_SERVICE_URL
-ARG REACT_APP_ANALYTICS_SERVICE_URL
-ENV REACT_APP_LINK_SERVICE_URL=${REACT_APP_LINK_SERVICE_URL}
-ENV REACT_APP_ANALYTICS_SERVICE_URL=${REACT_APP_ANALYTICS_SERVICE_URL}
+# Your app binds to port 3000, so you'll want to expose it
+EXPOSE 3000
 
-RUN npm run build
-
-FROM nginx:stable-alpine AS production
-
-RUN rm -rf /usr/share/nginx/html/*
-
-COPY --from=build /app/build /usr/share/nginx/html
-
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
+# The command to start the development server
+CMD ["npm", "start"]
