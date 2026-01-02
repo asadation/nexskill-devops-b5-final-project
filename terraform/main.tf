@@ -416,28 +416,47 @@ resource "aws_autoscaling_group" "ecs" {
   }
 }
 
+# Cloud map
+resource "aws_service_discovery_private_dns_namespace" "internal" {
+  name = "internal"
+  vpc  = aws_vpc.main.id
+}
+
+resource "aws_service_discovery_service" "link_service" {
+  name = "link-service"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.internal.id
+
+    dns_records {
+      type = "A"
+      ttl  = 10
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+}
+
 # ----------------------------
 # ECS Task Definition
 # ----------------------------
-resource "aws_ecs_task_definition" "node" {
-  family                   = "node-task-ec2"
+resource "aws_ecs_task_definition" "link_service" {
+  family                   = "link-service-task"
   requires_compatibilities = ["EC2"]
   network_mode             = "awsvpc"
-  cpu                      = "512"
-  memory                   = "512"
+  cpu    = "256"
+  memory = "256"
 
   task_role_arn      = aws_iam_role.ecs_task_role.arn
   execution_role_arn = aws_iam_role.ecs_execution_role.arn
 
-    container_definitions = jsonencode([
+  container_definitions = jsonencode([
     {
       name      = "link-service"
-      hostname = "link-service"
       image     = "docker.io/abdulwahab4d/url-shorten-final-project:link-service-latest"
       essential = true
       portMappings = [{
         containerPort = 3000
-        protocol      = "tcp"
       }]
       logConfiguration = {
         logDriver = "awslogs"
@@ -447,7 +466,7 @@ resource "aws_ecs_task_definition" "node" {
           awslogs-stream-prefix = "link-service"
         }
       }
-      secrets = [
+      secrets = [ 
         {
           name      = "DB_HOST"
           valueFrom = "arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret-pGfNMn:DB_HOST::"
@@ -464,27 +483,33 @@ resource "aws_ecs_task_definition" "node" {
           name      = "DB_PASSWORD"
           valueFrom = "arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret-pGfNMn:DB_PASSWORD::"
         }
-      ]
-    },
+       ]
+    }
+  ])
+}
+
+resource "aws_ecs_task_definition" "frontend" {
+  family                   = "frontend-task"
+  requires_compatibilities = ["EC2"]
+  network_mode             = "awsvpc"
+  cpu    = "512"
+  memory = "512"
+
+  task_role_arn      = aws_iam_role.ecs_task_role.arn
+  execution_role_arn = aws_iam_role.ecs_execution_role.arn
+
+  container_definitions = jsonencode([
     {
       name      = "frontend"
-      hostname = "frontend"
       image     = "docker.io/abdulwahab4d/url-shorten-final-project:frontend-latest"
       essential = true
       portMappings = [{
         containerPort = 80
-        protocol      = "tcp"
       }]
       environment = [
         {
           name  = "LINK_SERVICE_URL"
-          value = "http://link-service:3000"
-        }
-      ]
-      dependsOn = [
-        {
-          containerName = "link-service"
-          condition     = "START"
+          value = "http://link-service.internal:3000"
         }
       ]
       logConfiguration = {
@@ -495,44 +520,42 @@ resource "aws_ecs_task_definition" "node" {
           awslogs-stream-prefix = "frontend"
         }
       }
-      secrets = [
-        {
-          name      = "DB_HOST"
-          valueFrom = "arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret-pGfNMn:DB_HOST::"
-        },
-        {
-          name      = "DB_NAME"
-          valueFrom = "arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret-pGfNMn:DB_NAME::"
-        },
-        {
-          name      = "DB_USER"
-          valueFrom = "arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret-pGfNMn:DB_USER::"
-        },
-        {
-          name      = "DB_PASSWORD"
-          valueFrom = "arn:aws:secretsmanager:eu-north-1:828798301136:secret:urlshortener-db-secret-pGfNMn:DB_PASSWORD::"
-        }
-      ]
     }
   ])
 }
 
+
 # ----------------------------
 # ECS Service
 # ----------------------------
-resource "aws_ecs_service" "node" {
-  name            = "node-service-ec2-awsvpc"
+resource "aws_ecs_service" "link_service" {
+  name            = "link-service"
   cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.node.arn
+  task_definition = aws_ecs_task_definition.link_service.arn
   desired_count   = 1
   launch_type     = "EC2"
-  enable_execute_command = true
 
   network_configuration {
-    subnets          = [aws_subnet.public_1.id, aws_subnet.public_2.id]
-    security_groups  = [aws_security_group.ecs_sg.id]
+    subnets         = [aws_subnet.private_1.id, aws_subnet.private_2.id]
+    security_groups = [aws_security_group.ecs_sg.id]
   }
 
+  service_registries {
+    registry_arn = aws_service_discovery_service.link_service.arn
+  }
+}
+
+resource "aws_ecs_service" "frontend" {
+  name            = "frontend"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.frontend.arn
+  desired_count   = 1
+  launch_type     = "EC2"
+
+  network_configuration {
+    subnets         = [aws_subnet.public_1.id, aws_subnet.public_2.id]
+    security_groups = [aws_security_group.ecs_sg.id]
+  }
 
   load_balancer {
     target_group_arn = aws_lb_target_group.tg.arn
