@@ -193,6 +193,7 @@ resource "aws_security_group" "rds_sg" {
     to_port         = 5432
     protocol        = "tcp"
     security_groups = [aws_security_group.ecs_sg.id]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
@@ -256,6 +257,35 @@ resource "aws_lb_listener" "http" {
     target_group_arn = aws_lb_target_group.tg.arn
   }
 }
+
+# Link-Service
+resource "aws_lb_target_group" "link_tg" {
+  name        = "link-service-tg"
+  port        = 3000
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    path = "/health"
+  }
+}
+resource "aws_lb_listener_rule" "link_rule" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 10
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.link_tg.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/*"]
+    }
+  }
+}
+
 
 # ----------------------------
 # ECS Cluster
@@ -543,6 +573,12 @@ resource "aws_ecs_service" "link_service" {
   service_registries {
     registry_arn = aws_service_discovery_service.link_service.arn
   }
+  load_balancer {
+    target_group_arn = aws_lb_target_group.link_tg.arn
+    container_name   = "link-service"
+    container_port   = 3000
+  }
+  depends_on = [aws_lb_listener.http]
 }
 
 resource "aws_ecs_service" "frontend" {
@@ -562,6 +598,5 @@ resource "aws_ecs_service" "frontend" {
     container_name   = "frontend"
     container_port   = 80
   }
-
   depends_on = [aws_lb_listener.http]
 }
