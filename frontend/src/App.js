@@ -132,8 +132,9 @@ function App() {
   );
 }
 
-app.listen(3000, '0.0.0.0', () => {
+App.listen(3000, '0.0.0.0', () => {
   console.log('Link-service running on port 3000');
 });
+
 
 export default App;
