@@ -415,7 +415,7 @@ data "aws_ami" "ecs" {
 
 resource "aws_launch_template" "ecs" {
   image_id      = data.aws_ami.ecs.id
-  instance_type = "t3.small"
+  instance_type = "t3.large"
   key_name      = "Lab-Key"
 
   iam_instance_profile {

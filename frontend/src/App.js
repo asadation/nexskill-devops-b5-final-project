@@ -16,6 +16,11 @@ function App() {
     fetchLinks();
     fetchAnalytics();
   }, []);
+  useEffect(() => {
+    fetch("http://link-service:3000/health")
+    .then(res => res.json())
+    .then(data => console.log(data));
+  }, []);
 
   const fetchLinks = async () => {
     try {
@@ -131,10 +136,6 @@ function App() {
     </div>
   );
 }
-
-App.listen(3000, '0.0.0.0', () => {
-  console.log('Link-service running on port 3000');
-});
 
 
 export default App;
