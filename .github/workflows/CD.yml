@@ -22,13 +22,13 @@ jobs:
       - name: Redeploy frontend
         run: |
           aws ecs update-service \
-            --cluster my-cluster \
+            --cluster node-ec2-cluster \
             --service frontend \
             --force-new-deployment
 
       - name: Redeploy backend
         run: |
           aws ecs update-service \
-            --cluster my-cluster \
+            --cluster node-ec2-cluster \
             --service link-service \
             --force-new-deployment
