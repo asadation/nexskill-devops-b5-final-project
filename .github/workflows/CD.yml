@@ -1,0 +1,34 @@
+name: CD - Deploy to ECS
+
+on:
+  workflow_run:
+    workflows: ["Docker CI"]
+    types:
+      - completed
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-north-1
+
+      - name: Redeploy frontend
+        run: |
+          aws ecs update-service \
+            --cluster my-cluster \
+            --service frontend \
+            --force-new-deployment
+
+      - name: Redeploy backend
+        run: |
+          aws ecs update-service \
+            --cluster my-cluster \
+            --service link-service \
+            --force-new-deployment
