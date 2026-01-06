@@ -167,7 +167,15 @@ resource "aws_security_group" "ecs_sg" {
   to_port         = 3000
   protocol        = "tcp"
   security_groups = [aws_security_group.alb_sg.id]
+  }
+  ingress {
+  description     = "Analytics service from ALB"
+  from_port       = 4000
+  to_port         = 4000
+  protocol        = "tcp"
+  security_groups = [aws_security_group.alb_sg.id]
 }
+
 
 
   # Container-to-container Communication
@@ -289,10 +297,39 @@ resource "aws_lb_listener_rule" "link_rule" {
 
   condition {
     path_pattern {
-      values = ["/api/*"]
+      values = ["/api/links/*"]
     }
   }
 }
+
+# Analytics
+resource "aws_lb_target_group" "analytics_tg" {
+  name        = "analytics-service-tg"
+  port        = 4000
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    path = "/health"
+  }
+}
+resource "aws_lb_listener_rule" "analytics_rule" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 20
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.analytics_tg.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/analytics/*"]
+    }
+  }
+}
+
 
 # ----------------------------
 # ECS EC2 Cluster
@@ -415,7 +452,7 @@ data "aws_ami" "ecs" {
 
 resource "aws_launch_template" "ecs" {
   image_id      = data.aws_ami.ecs.id
-  instance_type = "t3.large"
+  instance_type = "t3.medium"
   key_name      = "Lab-Key"
 
   iam_instance_profile {
@@ -561,6 +598,36 @@ resource "aws_ecs_task_definition" "frontend" {
   ])
 }
 
+resource "aws_ecs_task_definition" "analytics" {
+  family                   = "analytics-task"
+  requires_compatibilities = ["EC2"]
+  network_mode             = "awsvpc"
+  cpu    = "256"
+  memory = "256"
+
+  task_role_arn      = aws_iam_role.ecs_task_role.arn
+  execution_role_arn = aws_iam_role.ecs_execution_role.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "analytics"
+      image     = "docker.io/abdulwahab4d/url-shorten-final-project:analytics-service-latest"
+      essential = true
+      portMappings = [{
+        containerPort = 4000
+      }]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = "/ecs/node-ec2-cluster"
+          awslogs-region        = "eu-north-1"
+          awslogs-stream-prefix = "analytics"
+        }
+      }
+    }
+  ])
+}
+
 
 # ----------------------------
 # ECS Service
@@ -606,4 +673,27 @@ resource "aws_ecs_service" "frontend" {
     container_port   = 80
   }
   depends_on = [aws_lb_listener.http]
+}
+resource "aws_ecs_service" "analytics" {
+  name            = "analytics-service"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.analytics.arn
+  desired_count   = 1
+  launch_type     = "EC2"
+
+  network_configuration {
+    subnets         = [aws_subnet.public_1.id, aws_subnet.public_2.id]
+    security_groups = [aws_security_group.ecs_sg.id]
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.analytics_tg.arn
+    container_name   = "analytics"
+    container_port   = 4000
+  }
+
+  depends_on = [
+    aws_lb_listener.http,
+    aws_lb_listener_rule.analytics_rule
+  ]
 }

@@ -17,7 +17,8 @@ function App() {
     fetchAnalytics();
   }, []);
   useEffect(() => {
-    fetch("http://link-service:3000/health")
+    fetch("/api/links/health")
+    fetch("/api/analytics/health")
     .then(res => res.json())
     .then(data => console.log(data));
   }, []);
