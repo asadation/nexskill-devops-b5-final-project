@@ -4,8 +4,6 @@ import psycopg2
 import hashlib
 import requests
 from config import Config
-from fastapi import FastAPI
-
 
 import os
 import time
