@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
-const LINK_SERVICE_URL = "http://node-alb-1950211125.eu-north-1.elb.amazonaws.com";
-const ANALYTICS_SERVICE_URL = "http://node-alb-1950211125.eu-north-1.elb.amazonaws.com";
+const LINK_SERVICE_URL = "/api";
+const ANALYTICS_SERVICE_URL = process.env.REACT_APP_ANALYTICS_SERVICE_URL || 'http://analytics-service:4000';
 
 
 function App() {
@@ -12,33 +12,36 @@ function App() {
   const [analytics, setAnalytics] = useState([]);
   const [error, setError] = useState('');
 
-// Define functions first
-const fetchLinks = async () => {
-  try {
-    const response = await fetch(`${LINK_SERVICE_URL}/api/links`);
-    const data = await response.json();
-    setLinks(data);
-  } catch (err) {
-    console.error('Error fetching links:', err);
-  }
-};
+  useEffect(() => {
+    fetchLinks();
+    fetchAnalytics();
+  }, []);
+  useEffect(() => {
+    fetch("/api/links/health")
+    fetch("/api/analytics/health")
+    .then(res => res.json())
+    .then(data => console.log(data));
+  }, []);
 
-const fetchAnalytics = async () => {
-  try {
-    const response = await fetch(`${ANALYTICS_SERVICE_URL}/api/analytics`);
-    const data = await response.json();
-    setAnalytics(data);
-  } catch (err) {
-    console.error('Error fetching analytics:', err);
-  }
-};
+  const fetchLinks = async () => {
+    try {
+      const response = await fetch(`${LINK_SERVICE_URL}/api/links`);
+      const data = await response.json();
+      setLinks(data);
+    } catch (err) {
+      console.error('Error fetching links:', err);
+    }
+  };
 
-// Then call them in useEffect
-useEffect(() => {
-  fetchLinks();
-  fetchAnalytics();
-}, []);
-
+  const fetchAnalytics = async () => {
+    try {
+      const response = await fetch(`${ANALYTICS_SERVICE_URL}/api/analytics`);
+      const data = await response.json();
+      setAnalytics(data);
+    } catch (err) {
+      console.error('Error fetching analytics:', err);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();

@@ -21,23 +21,6 @@ load_dotenv()  # This loads variables from .env into os.environ
 app = Flask(__name__)
 CORS(app)
 
-from fastapi import FastAPI
-
-app = FastAPI(openapi_prefix="/api/links")  # <-- handles /api/links/*
-
-@app.get("/")
-def health():
-    return []
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-@app.get("/some-endpoint")
-def some_endpoint():
-    return {"message": "Hello from link-service!"}
-
-# ---------------------------
 # Configuration
 # ---------------------------
 DB_RETRY_COUNT = int(os.getenv("DB_RETRY_COUNT", 10))
