@@ -4,6 +4,7 @@ import psycopg2
 import hashlib
 import requests
 from config import Config
+from fastapi import FastAPI
 
 
 import os
@@ -21,6 +22,18 @@ load_dotenv()  # This loads variables from .env into os.environ
 
 app = Flask(__name__)
 CORS(app)
+
+from fastapi import FastAPI
+
+app = FastAPI(openapi_prefix="/api/links")  # <-- handles /api/links/*
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+@app.get("/some-endpoint")
+def some_endpoint():
+    return {"message": "Hello from link-service!"}
 
 # ---------------------------
 # Configuration

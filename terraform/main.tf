@@ -330,7 +330,6 @@ resource "aws_lb_listener_rule" "analytics_rule" {
   }
 }
 
-
 # ----------------------------
 # ECS EC2 Cluster
 # ----------------------------
