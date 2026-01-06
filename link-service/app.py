@@ -25,6 +25,10 @@ from fastapi import FastAPI
 
 app = FastAPI(openapi_prefix="/api/links")  # <-- handles /api/links/*
 
+@app.get("/")
+def get_links():
+    return []
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
