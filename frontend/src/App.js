@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
-const LINK_SERVICE_URL = "http://node-alb-1209166320.eu-north-1.elb.amazonaws.com/api/links";
-const ANALYTICS_SERVICE_URL = "http://node-alb-1209166320.eu-north-1.elb.amazonaws.com/api/analytics";
+const LINK_SERVICE_URL = "http://node-alb-1950211125.eu-north-1.elb.amazonaws.com";
+const ANALYTICS_SERVICE_URL = "http://node-alb-1950211125.eu-north-1.elb.amazonaws.com";
 
 
 function App() {

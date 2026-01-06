@@ -451,7 +451,7 @@ data "aws_ami" "ecs" {
 
 resource "aws_launch_template" "ecs" {
   image_id      = data.aws_ami.ecs.id
-  instance_type = "c5.large"
+  instance_type = "m5.large"
   key_name      = "Lab-Key"
 
   iam_instance_profile {
@@ -526,7 +526,7 @@ resource "aws_ecs_task_definition" "link_service" {
   container_definitions = jsonencode([
     {
       name      = "link-service"
-      image     = "docker.io/abdulwahab4d/url-shorten-final-project:link-service-latest"
+      image     = "docker.io/abdulwahab4d/url-shorten-final-project:link-service-ci-${var.link_service_image_tag}"
       essential = true
       portMappings = [{
         containerPort = 3000
@@ -574,7 +574,7 @@ resource "aws_ecs_task_definition" "frontend" {
   container_definitions = jsonencode([
     {
       name      = "frontend"
-      image     = "docker.io/abdulwahab4d/url-shorten-final-project:frontend-latest"
+      image     = "docker.io/abdulwahab4d/url-shorten-final-project:frontend-ci-${var.frontend_image_tag}"
       essential = true
       portMappings = [{
         containerPort = 80
@@ -610,7 +610,7 @@ resource "aws_ecs_task_definition" "analytics" {
   container_definitions = jsonencode([
     {
       name      = "analytics"
-      image     = "docker.io/abdulwahab4d/url-shorten-final-project:analytics-service-latest"
+      image     = "docker.io/abdulwahab4d/url-shorten-final-project:analytics-service--${var.analytics_service_image_tag}"
       essential = true
       portMappings = [{
         containerPort = 4000
