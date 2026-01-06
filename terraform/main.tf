@@ -696,3 +696,14 @@ resource "aws_ecs_service" "analytics" {
     aws_lb_listener_rule.analytics_rule
   ]
 }
+
+# ----------------------------
+# Outputs
+# ----------------------------
+output "link_service_alb_url" {
+  value = "http://${aws_lb.alb.dns_name}/api/links"
+}
+
+output "analytics_service_alb_url" {
+  value = "http://${aws_lb.alb.dns_name}/api/analytics"
+}
