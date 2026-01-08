@@ -100,7 +100,7 @@ def shorten_url():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/<short_code>', methods=['GET'])
+@app.route('/api/links/<short_code>', methods=['GET'])
 def redirect_url(short_code):
     try:
         conn = get_db_connection()
