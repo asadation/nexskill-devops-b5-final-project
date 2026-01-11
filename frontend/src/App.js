@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
-const LINK_SERVICE_URL = process.env.REACT_APP_LINK_SERVICE_URL || 'http://localhost:3000';
-const ANALYTICS_SERVICE_URL = process.env.REACT_APP_ANALYTICS_SERVICE_URL || 'http://localhost:4000';
+const ALB_URL = "http://node-alb-785266603.eu-north-1.elb.amazonaws.com";
+const LINK_SERVICE_URL = `${ALB_URL}`;
+const ANALYTICS_SERVICE_URL = `${ALB_URL}/api/analytics`;
+
+
 
 function App() {
   const [url, setUrl] = useState('');
@@ -28,7 +31,7 @@ function App() {
 
   const fetchAnalytics = async () => {
     try {
-      const response = await fetch(`${ANALYTICS_SERVICE_URL}/api/analytics`);
+      const response = await fetch(ANALYTICS_SERVICE_URL);
       const data = await response.json();
       setAnalytics(data);
     } catch (err) {
@@ -51,7 +54,7 @@ function App() {
       const data = await response.json();
       
       if (response.ok) {
-        setShortUrl(`${LINK_SERVICE_URL}${data.short_url}`);
+        setShortUrl(`${LINK_SERVICE_URL}/api/links/${data.short_url}`);
         setUrl('');
         fetchLinks();
       } else {
@@ -114,7 +117,7 @@ function App() {
               {links.map((link) => (
                 <tr key={link.short_code}>
                   <td>
-                    <a href={`${LINK_SERVICE_URL}/${link.short_code}`} target="_blank" rel="noopener noreferrer">
+                    <a href={`${LINK_SERVICE_URL}/api/links/${link.short_code}`} target="_blank" rel="noopener noreferrer">
                       {link.short_code}
                     </a>
                   </td>

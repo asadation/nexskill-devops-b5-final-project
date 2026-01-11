@@ -5,9 +5,36 @@ import hashlib
 import requests
 from config import Config
 
+import os
+import time
+import psycopg2
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import string
+import random
+from dotenv import load_dotenv
+
+load_dotenv()  # This loads variables from .env into os.environ
+
+
+
 app = Flask(__name__)
 CORS(app)
 
+# Configuration
+# ---------------------------
+DB_RETRY_COUNT = int(os.getenv("DB_RETRY_COUNT", 10))
+DB_RETRY_DELAY = int(os.getenv("DB_RETRY_DELAY", 5))
+
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("5432")
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+
+# ---------------------------
+# Database Functions
+# ---------------------------
 def get_db_connection():
     conn = psycopg2.connect(
         host=Config.DATABASE_HOST,
@@ -73,7 +100,7 @@ def shorten_url():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/<short_code>', methods=['GET'])
+@app.route('/api/links/<short_code>', methods=['GET'])
 def redirect_url(short_code):
     try:
         conn = get_db_connection()
@@ -88,12 +115,13 @@ def redirect_url(short_code):
             
             try:
                 requests.post(
-                    f'{Config.ANALYTICS_SERVICE_URL}/api/track',
+                    f'{Config.ANALYTICS_SERVICE_URL}/track',
                     json={'short_code': short_code},
                     timeout=2
                 )
-            except:
-                pass
+                print(f"Tracked click for {short_code}, status: {resp.status_code}")
+            except Exception as e:
+                print(f"Analytics tracking failed: {e}")
             
             return redirect(original_url)
         else:
@@ -121,4 +149,4 @@ def get_all_links():
 
 if __name__ == '__main__':
     init_db()
-    app.run(host='0.0.0.0', port=Config.PORT, debug=True)
+    app.run(host='0.0.0.0', port=3000)

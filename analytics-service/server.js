@@ -7,7 +7,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+
+
 const pool = new Pool(config.database);
+
 
 async function initDb() {
     const client = await pool.connect();
