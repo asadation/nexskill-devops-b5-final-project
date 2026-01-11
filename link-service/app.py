@@ -119,8 +119,9 @@ def redirect_url(short_code):
                     json={'short_code': short_code},
                     timeout=2
                 )
-            except:
-                pass
+                print(f"Tracked click for {short_code}, status: {resp.status_code}")
+            except Exception as e:
+                print(f"Analytics tracking failed: {e}")
             
             return redirect(original_url)
         else:
