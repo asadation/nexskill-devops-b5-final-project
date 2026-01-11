@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
-const LINK_SERVICE_URL = "";
-const ANALYTICS_SERVICE_URL = "/api/analytics";
+const ALB_URL = "http://node-alb-785266603.eu-north-1.elb.amazonaws.com";
+const LINK_SERVICE_URL = `${ALB_URL}`;
+const ANALYTICS_SERVICE_URL = `${ALB_URL}/api/analytics`;
+
 
 
 function App() {
